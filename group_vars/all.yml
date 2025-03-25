@@ -13,6 +13,10 @@ k3s_server_args:
   # API Server
   - "--tls-san={{ k3s_api_ip | default(hostvars[groups['k3s_masters'][0]]['ansible_host']) }}"
 
+# For Cilium with kube-proxy replacement
+# Uncomment this if you want to run Cilium with kube-proxy replacement
+# - "--disable-kube-proxy"
+
 k3s_agent_args: []
 
 # K3s installation settings
@@ -23,15 +27,21 @@ k3s_control_node: "{{ hostvars[groups['k3s_masters'][0]]['ansible_host'] }}"
 k3s_url: "https://{{ k3s_control_node }}:6443"
 
 # Cilium settings
-cilium_version: "1.15.0" # or specify another version
+cilium_version: "1.17.2" # Latest stable version
 cilium_namespace: "kube-system"
 cilium_chart_repo: "https://helm.cilium.io/"
 cilium_chart_version: "{{ cilium_version }}"
+cilium_cli_install: true # Whether to install the Cilium CLI
 
 # Cilium feature flags
 cilium_enable_bgp: false # Set to true to enable BGP mode
 cilium_enable_ingress: true # Enable Cilium Ingress Controller
 cilium_enable_loadbalancer: true # Enable LoadBalancer support
+cilium_enable_hubble: false # Enable Hubble observability
+
+# Cilium Pod CIDR
+# This matches K3s default podCIDR - important for compatibility
+cilium_ipv4_native_routing_cidr: "10.42.0.0/16"
 
 # Cilium BGP settings (used when cilium_enable_bgp is true)
 cilium_bgp_announce_lb_ips: true
@@ -42,7 +52,7 @@ cilium_cluster_pool_ipv4_cidr: "10.10.0.0/24" # Used for LoadBalancer IPs
 cilium_helm_values:
   ipam:
     mode: "kubernetes"
-  kubeProxyReplacement: "true"
+  kubeProxyReplacement: "strict" # Updated from true to strict for 1.17.2
   k8sServiceHost: "{{ k3s_control_node }}"
   k8sServicePort: 6443
   externalIPs:
@@ -54,11 +64,11 @@ cilium_helm_values:
   hostServices:
     enabled: true
   hubble:
-    enabled: true
+    enabled: "{{ cilium_enable_hubble }}"
     relay:
-      enabled: true
+      enabled: "{{ cilium_enable_hubble }}"
     ui:
-      enabled: true
+      enabled: "{{ cilium_enable_hubble }}"
   ingressController:
     enabled: "{{ cilium_enable_ingress }}"
     loadbalancerMode: "dedicated"
@@ -77,4 +87,10 @@ cilium_helm_values:
   # Used when cilium_enable_loadbalancer is true
   l2announcements:
     enabled: "{{ cilium_enable_loadbalancer and not cilium_enable_bgp }}"
-  ipv4NativeRoutingCIDR: "10.0.0.0/8"
+  ipv4NativeRoutingCIDR: "{{ cilium_ipv4_native_routing_cidr }}"
+  # Added for 1.17.2 compatibility
+  cni:
+    exclusive: true
+  operator:
+    replicas: 1
+  routingMode: "native"
