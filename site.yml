@@ -12,19 +12,12 @@
       run_once: true
       delegate_to: localhost
 
-- name: Verify connectivity to all nodes
+- name: Install prerequisites on all nodes
   hosts: k3s_cluster
-  gather_facts: true
-  tasks:
-    - name: Check Python
-      raw: which python3 || which python
-      changed_when: false
-      register: python_check
-    
-    - name: Set Python interpreter path
-      set_fact:
-        ansible_python_interpreter: "{{ python_check.stdout_lines[0] }}"
-      when: python_check.stdout_lines is defined and python_check.stdout_lines|length > 0
+  gather_facts: false
+  become: true
+  roles:
+    - prerequisites
 
 - name: Apply common configuration to all nodes
   hosts: k3s_cluster
