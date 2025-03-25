@@ -1,0 +1,28 @@
+---
+# K3s worker installation
+
+- name: Check if K3s is already installed
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Get K3s token from first master
+  set_fact:
+    k3s_token: "{{ hostvars[groups['k3s_masters'][0]]['k3s_token'] }}"
+
+- name: Download K3s install script
+  get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: 0755
+  when: not k3s_binary.stat.exists
+
+- name: Install K3s agent
+  shell: |
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} \
+      K3S_URL=https://{{ hostvars[groups['k3s_masters'][0]]['ansible_host'] }}:6443 \
+      K3S_TOKEN={{ k3s_token }} \
+      sh -s - {{ k3s_agent_args | join(' ') }}
+  environment:
+    INSTALL_K3S_EXEC: "agent"
+  when: not k3s_binary.stat.exists
