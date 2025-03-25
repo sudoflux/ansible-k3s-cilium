@@ -1,0 +1,88 @@
+---
+# Main playbook for K3s with Cilium
+
+- name: Verify Ansible version
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check Ansible version
+      assert:
+        that: "ansible_version.full is version_compare('2.9.0', '>=')"
+        msg: "You must update Ansible to at least 2.9.0 to use this playbook."
+      run_once: true
+      delegate_to: localhost
+
+- name: Verify connectivity to all nodes
+  hosts: k3s_cluster
+  gather_facts: true
+  tasks:
+    - name: Check Python
+      raw: which python3 || which python
+      changed_when: false
+      register: python_check
+    
+    - name: Set Python interpreter path
+      set_fact:
+        ansible_python_interpreter: "{{ python_check.stdout_lines[0] }}"
+      when: python_check.stdout_lines is defined and python_check.stdout_lines|length > 0
+
+- name: Apply common configuration to all nodes
+  hosts: k3s_cluster
+  become: true
+  roles:
+    - common
+
+- name: Deploy K3s masters
+  hosts: k3s_masters
+  become: true
+  roles:
+    - k3s-master
+
+- name: Deploy K3s workers
+  hosts: k3s_workers
+  become: true
+  roles:
+    - k3s-worker
+
+- name: Deploy Cilium CNI
+  hosts: k3s_masters[0]
+  become: true
+  roles:
+    - cilium
+
+- name: Cluster summary
+  hosts: k3s_masters[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Get cluster nodes
+      shell: kubectl get nodes -o wide
+      register: k8s_nodes
+      changed_when: false
+
+    - name: Get Cilium pods
+      shell: kubectl -n kube-system get pods -l k8s-app=cilium
+      register: cilium_pods
+      changed_when: false
+
+    - name: Get Cilium version 
+      shell: kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].spec.containers[0].image}' | cut -d ":" -f2
+      register: cilium_version_installed
+      changed_when: false
+
+    - name: Display cluster information
+      debug:
+        msg:
+          - "K3s Cluster with Cilium has been successfully deployed!"
+          - "Kubernetes nodes:"
+          - "{{ k8s_nodes.stdout_lines }}"
+          - ""
+          - "Cilium pods:"
+          - "{{ cilium_pods.stdout_lines }}"
+          - ""
+          - "Cilium version: {{ cilium_version_installed.stdout }}"
+          - ""
+          - "You can now access your cluster using:"
+          - "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml (on the master node)"
+          - "or by copying the kubeconfig to your local machine and using:"
+          - "export KUBECONFIG=/path/to/kubeconfig"
