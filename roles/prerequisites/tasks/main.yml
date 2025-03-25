@@ -1,0 +1,104 @@
+---
+# Install prerequisites on all target nodes
+
+- name: Check SSH connection
+  wait_for_connection:
+    timeout: 30
+  ignore_errors: true
+  register: ssh_check
+
+- name: Fail if SSH connection is not available
+  fail:
+    msg: "Unable to connect to {{ inventory_hostname }} via SSH. Please ensure SSH access is configured correctly."
+  when: ssh_check.failed
+
+- name: Check if Python is installed
+  raw: command -v python3 || command -v python
+  register: python_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Install Python if not present
+  raw: >
+    {% if ansible_os_family is defined and ansible_os_family == 'Debian' %}
+    apt-get update && apt-get install -y python3
+    {% elif ansible_os_family is defined and ansible_os_family == 'RedHat' %}
+    yum install -y python3
+    {% else %}
+    apt-get update && apt-get install -y python3 || yum install -y python3
+    {% endif %}
+  when: python_check.rc != 0 or python_check.stdout == ""
+  register: python_install
+  until: python_install is success
+  retries: 3
+  delay: 5
+
+- name: Set Python interpreter path
+  set_fact:
+    ansible_python_interpreter: "{{ python_check.stdout_lines[0] | default('/usr/bin/python3') }}"
+  when: python_check.stdout_lines is defined and python_check.stdout_lines | length > 0
+
+- name: Gather facts after Python installation
+  setup:
+
+- name: Install basic packages for Ansible management
+  package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - sudo
+    - openssh-server
+    - python3-apt
+  when: ansible_os_family == 'Debian'
+
+- name: Install basic packages for Ansible management (RedHat)
+  package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - sudo
+    - openssh-server
+    - python3-dnf
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure sudo is configured correctly
+  lineinfile:
+    path: /etc/sudoers
+    regexp: '^%sudo\s'
+    line: '%sudo ALL=(ALL:ALL) NOPASSWD: ALL'
+    validate: 'visudo -cf %s'
+  when: ansible_os_family == 'Debian'
+
+- name: Create sudo group if it doesn't exist (Debian)
+  group:
+    name: sudo
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure wheel group is configured correctly (RedHat)
+  lineinfile:
+    path: /etc/sudoers
+    regexp: '^%wheel\s'
+    line: '%wheel ALL=(ALL:ALL) NOPASSWD: ALL'
+    validate: 'visudo -cf %s'
+  when: ansible_os_family == 'RedHat'
+
+- name: Add Ansible user to sudo group (Debian)
+  user:
+    name: "{{ ansible_user }}"
+    groups: sudo
+    append: yes
+  when: ansible_os_family == 'Debian'
+
+- name: Add Ansible user to wheel group (RedHat)
+  user:
+    name: "{{ ansible_user }}"
+    groups: wheel
+    append: yes
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure SSH service is running and enabled
+  service:
+    name: sshd
+    state: started
+    enabled: yes
