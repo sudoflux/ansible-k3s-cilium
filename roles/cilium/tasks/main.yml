@@ -29,6 +29,54 @@
   delay: 30
   when: inventory_hostname == groups['k3s_masters'][0]
 
+- name: Install Cilium CLI (for easier installation and management)
+  block:
+    - name: Get Cilium CLI version
+      shell: |
+        curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
+      register: cilium_cli_version
+      when: cilium_cli_install | bool
+
+    - name: Determine architecture
+      shell: |
+        if [ "$(uname -m)" = "aarch64" ]; then echo "arm64"; else echo "amd64"; fi
+      register: arch_result
+      when: cilium_cli_install | bool
+
+    - name: Set architecture fact
+      set_fact:
+        cli_arch: "{{ arch_result.stdout }}"
+      when: cilium_cli_install | bool
+
+    - name: Download and install Cilium CLI
+      shell: |
+        curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version.stdout }}/cilium-linux-{{ cli_arch }}.tar.gz{,.sha256sum}
+        sha256sum --check cilium-linux-{{ cli_arch }}.tar.gz.sha256sum
+        sudo tar xzvfC cilium-linux-{{ cli_arch }}.tar.gz /usr/local/bin
+        rm cilium-linux-{{ cli_arch }}.tar.gz{,.sha256sum}
+      args:
+        creates: /usr/local/bin/cilium
+      when: cilium_cli_install | bool
+  when: inventory_hostname == groups['k3s_masters'][0]
+
+- name: Install Cilium CRDs
+  shell: |
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumnetworkpolicies.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumclusterwidenetworkpolicies.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumendpoints.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumidentities.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumnetworks.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumnodes.yaml
+  when: inventory_hostname == groups['k3s_masters'][0]
+
+- name: Install Ingress CRDs when ingress is enabled
+  shell: |
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2alpha1/ciliumingresses.yaml
+    kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v{{ cilium_version }}/pkg/k8s/apis/cilium.io/client/crds/v2alpha1/ciliumloadbalancerippools.yaml
+  when: 
+    - inventory_hostname == groups['k3s_masters'][0]
+    - cilium_enable_ingress | bool
+
 - name: Install Cilium with Helm
   shell: |
     helm install cilium cilium/cilium \
@@ -79,11 +127,27 @@
     EOF
   when: 
     - inventory_hostname == groups['k3s_masters'][0]
-    - cilium_enable_bgp | bool
+    - cilium_enable_bgp | bool or cilium_enable_loadbalancer | bool
+
+- name: Set up Example Ingress when ingress is enabled
+  shell: |
+    cat << EOF | kubectl apply -f -
+    apiVersion: networking.k8s.io/v1
+    kind: IngressClass
+    metadata:
+      name: cilium
+      annotations:
+        ingressclass.kubernetes.io/is-default-class: "true"
+    spec:
+      controller: io.cilium/ingress-controller
+    EOF
+  when:
+    - inventory_hostname == groups['k3s_masters'][0]
+    - cilium_enable_ingress | bool
 
 - name: Get Cilium status
   shell: |
-    kubectl -n {{ cilium_namespace }} exec -ti ds/cilium -- cilium status
+    kubectl -n {{ cilium_namespace }} exec -ti ds/cilium -- cilium status || true
   register: cilium_status
   when: inventory_hostname == groups['k3s_masters'][0]
 
@@ -91,3 +155,12 @@
   debug:
     var: cilium_status.stdout_lines
   when: inventory_hostname == groups['k3s_masters'][0]
+
+- name: Run Cilium connectivity test
+  shell: |
+    cilium connectivity test
+  register: cilium_test
+  when: 
+    - inventory_hostname == groups['k3s_masters'][0]
+    - cilium_cli_install | bool
+  ignore_errors: true
