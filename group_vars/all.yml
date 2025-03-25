@@ -1,0 +1,80 @@
+---
+# K3s settings
+k3s_version: "latest" # or specify a version like "v1.28.6+k3s2"
+k3s_server_args:
+  # Disable default components
+  - "--disable-cloud-controller"
+  - "--disable=traefik"
+  - "--disable=servicelb"
+  - "--flannel-backend=none"
+  - "--disable-network-policy"
+  # Node labeling
+  - "--node-label=node.kubernetes.io/master=true"
+  # API Server
+  - "--tls-san={{ k3s_api_ip | default(hostvars[groups['k3s_masters'][0]]['ansible_host']) }}"
+
+k3s_agent_args: []
+
+# K3s installation settings
+k3s_become: true
+k3s_etcd_datastore: true
+k3s_use_experimental: false
+k3s_control_node: "{{ hostvars[groups['k3s_masters'][0]]['ansible_host'] }}"
+k3s_url: "https://{{ k3s_control_node }}:6443"
+
+# Cilium settings
+cilium_version: "1.15.0" # or specify another version
+cilium_namespace: "kube-system"
+cilium_chart_repo: "https://helm.cilium.io/"
+cilium_chart_version: "{{ cilium_version }}"
+
+# Cilium feature flags
+cilium_enable_bgp: false # Set to true to enable BGP mode
+cilium_enable_ingress: true # Enable Cilium Ingress Controller
+cilium_enable_loadbalancer: true # Enable LoadBalancer support
+
+# Cilium BGP settings (used when cilium_enable_bgp is true)
+cilium_bgp_announce_lb_ips: true
+cilium_bgp_announce_pod_cidr: false
+cilium_cluster_pool_ipv4_cidr: "10.10.0.0/24" # Used for LoadBalancer IPs
+
+# Cilium Helm chart values
+cilium_helm_values:
+  ipam:
+    mode: "kubernetes"
+  kubeProxyReplacement: "true"
+  k8sServiceHost: "{{ k3s_control_node }}"
+  k8sServicePort: 6443
+  externalIPs:
+    enabled: true
+  nodePort:
+    enabled: true
+  hostPort:
+    enabled: true
+  hostServices:
+    enabled: true
+  hubble:
+    enabled: true
+    relay:
+      enabled: true
+    ui:
+      enabled: true
+  ingressController:
+    enabled: "{{ cilium_enable_ingress }}"
+    loadbalancerMode: "dedicated"
+  bgpControlPlane:
+    enabled: "{{ cilium_enable_bgp }}"
+    announce:
+      loadbalancerIP: "{{ cilium_bgp_announce_lb_ips }}"
+      podCIDR: "{{ cilium_bgp_announce_pod_cidr }}"
+  loadBalancer:
+    algorithm: "maglev"
+    mode: "dsr"
+  bpf:
+    masquerade: true
+  tunnel: "disabled"
+  autoDirectNodeRoutes: true
+  # Used when cilium_enable_loadbalancer is true
+  l2announcements:
+    enabled: "{{ cilium_enable_loadbalancer and not cilium_enable_bgp }}"
+  ipv4NativeRoutingCIDR: "10.0.0.0/8"
