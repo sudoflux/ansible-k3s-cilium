@@ -24,9 +24,9 @@ This playbook should be run from a control node, which can be:
 
 The control node requires:
 - Ansible 2.9+ installed
+- Python 3.x installed (for running Ansible and the inventory generator script)
 - SSH access to all target nodes
 - Internet access for downloading packages
-- Python 3.x installed (for running the playbook)
 
 ### Target Node Requirements
 The playbook automatically installs all required dependencies on target nodes. The minimum requirements are:
@@ -34,7 +34,7 @@ The playbook automatically installs all required dependencies on target nodes. T
 - SSH server running and accessible
 - A user with sudo privileges (the playbook will configure this if needed)
 
-**Note:** You do not need Python pre-installed on target nodes. The playbook uses raw commands for initial setup and installs Python if necessary.
+**Note:** Python is NOT required to be pre-installed on target nodes. The playbook uses raw commands for initial setup and installs Python on the target nodes if necessary.
 
 ## 🚦 Usage
 
