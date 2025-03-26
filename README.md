@@ -1,18 +1,19 @@
-# Ansible K3s with Cilium
+# 🚀 Ansible K3s with Cilium
 
-An Ansible playbook for deploying a K3s Kubernetes cluster with Cilium networking.
+An Ansible playbook for deploying a production-ready K3s Kubernetes cluster with Cilium networking.
 
-## Features
+## ✨ Features
 
-- Installs K3s on a user-defined cluster (configurable master and worker nodes)
-- Disables installation of Traefik, Flannel, and other default K3s components
-- Installs Cilium 1.17.2 as the CNI with proper CRD support
-- Provides complete Ingress Controller functionality with IngressClass support
-- Supports LoadBalancer services with L2 announcements or BGP
-- Optional BGP mode configuration
-- Automatically installs all prerequisites on target nodes
+- 🌐 Installs K3s on a user-defined cluster (configurable master and worker nodes)
+- 🧩 Disables installation of Traefik, Flannel, and other default K3s components
+- 🐙 Installs Cilium 1.17.2 as the CNI with proper CRD support
+- 🚪 Provides complete Ingress Controller functionality with IngressClass support
+- ⚖️ Supports LoadBalancer services with L2 announcements or BGP
+- 📡 Optional BGP mode configuration
+- 🛠️ Automatically installs all prerequisites on target nodes
+- 🧹 Supports clean installation option to remove previous K3s/Cilium deployments
 
-## Requirements
+## 📋 Requirements
 
 ### Control Node Requirements
 This playbook should be run from a control node, which can be:
@@ -31,7 +32,7 @@ The playbook automatically installs all required dependencies on target nodes. T
 - SSH server running and accessible
 - A user with sudo privileges (the playbook will configure this if needed)
 
-## Usage
+## 🚦 Usage
 
 1. Clone this repository
    ```bash
@@ -51,7 +52,13 @@ The playbook automatically installs all required dependencies on target nodes. T
    ansible-playbook site.yml -i inventory/hosts.yml
    ```
 
-## Where to Run the Playbook
+5. For clean installation (removing previous K3s/Cilium):
+   ```bash
+   # Make sure clean_install is set to true in inventory/hosts.yml
+   ansible-playbook site.yml -i inventory/hosts.yml --ask-become-pass
+   ```
+
+## 🖥️ Where to Run the Playbook
 
 You can run this playbook from any machine that has:
 1. Ansible installed
@@ -60,7 +67,7 @@ You can run this playbook from any machine that has:
 
 The playbook handles installing all prerequisites on the target machines, so they don't need any special configuration beforehand.
 
-## Configuration
+## ⚙️ Configuration
 
 The main configuration variables are in `group_vars/all.yml`. Key options include:
 
@@ -73,7 +80,7 @@ The main configuration variables are in `group_vars/all.yml`. Key options includ
 
 See the comments in `group_vars/all.yml` for more options and details.
 
-## Ingress Configuration
+## 🌐 Ingress Configuration
 
 The playbook automatically sets up Cilium as the default IngressClass controller in your cluster. This means:
 
@@ -101,7 +108,44 @@ spec:
               number: 80
 ```
 
-## Automatic Prerequisites Installation
+## 🔄 Reinstalling or Upgrading
+
+To reinstall or upgrade an existing cluster:
+
+1. Set `clean_install: true` in your inventory file
+2. Run the playbook with sudo access: `ansible-playbook site.yml -i inventory/hosts.yml --ask-become-pass`
+
+This will:
+- Uninstall existing K3s installation
+- Clean up CNI configuration files
+- Remove stale container resources
+- Install fresh K3s and Cilium instances
+
+## ⚠️ Known Issues and Gotchas for Cilium 1.17.2
+
+When using Cilium 1.17.2, be aware of the following:
+
+1. **Deprecated `tunnel` Option**: The `tunnel` configuration option was deprecated in Cilium 1.14 and removed in 1.15. If you encounter an error message like:
+   ```
+   execution error: tunnel was deprecated in v1.14 and has been removed in v1.15
+   ```
+   This playbook automatically removes this option from the configuration.
+
+2. **kubeProxyReplacement Setting**: In Cilium 1.17.2, `kubeProxyReplacement` must be set to either `true` or `false`, not `strict`. The playbook sets this to `true` by default.
+
+3. **Namespace Termination Issues**: If a previous Cilium installation left a namespace (like `cilium-secrets`) in a "Terminating" state, you may need to force-delete it:
+   ```bash
+   kubectl get namespace cilium-secrets -o json | jq '.spec.finalizers = []' > temp.json
+   kubectl replace --raw "/api/v1/namespaces/cilium-secrets/finalize" -f temp.json
+   ```
+   The clean installation option attempts to handle this automatically.
+
+4. **KUBECONFIG Environment Variable**: When running helm commands or kubectl manually on the master node, you may need to specify the kubeconfig location:
+   ```bash
+   KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get pods
+   ```
+
+## 🛠️ Automatic Prerequisites Installation
 
 The playbook includes a `prerequisites` role that will:
 1. Check SSH connectivity
@@ -112,6 +156,6 @@ The playbook includes a `prerequisites` role that will:
 
 This means you can run the playbook against fresh servers with minimal configuration.
 
-## License
+## 📜 License
 
 MIT

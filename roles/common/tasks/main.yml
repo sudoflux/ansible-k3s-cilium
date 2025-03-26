@@ -1,55 +1,29 @@
 ---
-# Common prerequisites for all nodes
+# Common prerequisites for all nodes - modified to work with limited Python/facts support
 
-- name: Ensure required packages
-  package:
-    name: "{{ item }}"
-    state: present
-  loop:
-    - curl
-    - apt-transport-https
-    - ca-certificates
-    - gnupg
-    - python3
-    - python3-pip
-
-- name: Disable swap
-  shell: |
-    swapoff -a
-    sed -i '/swap/d' /etc/fstab
+- name: Check if K3s already exists
+  raw: which k3s || echo "not installed"
+  register: k3s_check
   changed_when: false
 
-- name: Enable IP forwarding
-  sysctl:
-    name: net.ipv4.ip_forward
-    value: '1'
-    state: present
-    reload: yes
+- name: Install basic packages using raw commands
+  raw: apt-get update && apt-get install -y curl apt-transport-https ca-certificates gnupg python3 python3-pip
+  when: "'not installed' in k3s_check.stdout"
 
-- name: Configure modules
-  copy:
-    dest: /etc/modules-load.d/k8s.conf
-    content: |
-      br_netfilter
-      overlay
-    mode: 0644
+- name: Disable swap
+  raw: swapoff -a && sed -i '/swap/d' /etc/fstab
+  changed_when: false
 
-- name: Load required modules
-  modprobe:
-    name: "{{ item }}"
-    state: present
-  loop:
-    - br_netfilter
-    - overlay
-
-- name: Configure kernel parameters for Kubernetes
-  sysctl:
-    name: "{{ item }}"
-    value: '1'
-    state: present
-    reload: yes
-  loop:
-    - net.bridge.bridge-nf-call-iptables
-    - net.bridge.bridge-nf-call-ip6tables
-    - net.ipv4.conf.all.forwarding
-    - net.ipv6.conf.all.forwarding
+- name: Configure kernel parameters for networking
+  raw: |
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    echo "br_netfilter" > /etc/modules-load.d/k8s.conf
+    echo "overlay" >> /etc/modules-load.d/k8s.conf
+    modprobe br_netfilter
+    modprobe overlay
+    echo "net.bridge.bridge-nf-call-iptables = 1" > /etc/sysctl.d/k8s.conf
+    echo "net.bridge.bridge-nf-call-ip6tables = 1" >> /etc/sysctl.d/k8s.conf
+    echo "net.ipv4.conf.all.forwarding = 1" >> /etc/sysctl.d/k8s.conf
+    echo "net.ipv6.conf.all.forwarding = 1" >> /etc/sysctl.d/k8s.conf
+    sysctl --system
+  changed_when: false
