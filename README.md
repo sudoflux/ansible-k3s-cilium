@@ -12,6 +12,7 @@ An Ansible playbook for deploying a production-ready K3s Kubernetes cluster with
 - 📡 Optional BGP mode configuration
 - 🛠️ Automatically installs all prerequisites on target nodes
 - 🧹 Supports clean installation option to remove previous K3s/Cilium deployments
+- 🐍 Works on nodes without Python using raw commands for bootstrapping
 
 ## 📋 Requirements
 
@@ -25,12 +26,15 @@ The control node requires:
 - Ansible 2.9+ installed
 - SSH access to all target nodes
 - Internet access for downloading packages
+- Python 3.x installed (for running the playbook)
 
 ### Target Node Requirements
 The playbook automatically installs all required dependencies on target nodes. The minimum requirements are:
 - Compatible Linux distribution (Ubuntu, Debian, CentOS, RHEL, etc.)
 - SSH server running and accessible
 - A user with sudo privileges (the playbook will configure this if needed)
+
+**Note:** You do not need Python pre-installed on target nodes. The playbook uses raw commands for initial setup and installs Python if necessary.
 
 ## 🚦 Usage
 
@@ -79,6 +83,31 @@ The main configuration variables are in `group_vars/all.yml`. Key options includ
 - `cilium_enable_hubble`: Whether to enable Hubble observability
 
 See the comments in `group_vars/all.yml` for more options and details.
+
+## 🚦 Python Bootstrapping and Node Preparation
+
+This playbook is designed to work on fresh servers with minimal pre-configuration. Here's how it handles nodes without Python:
+
+1. **Initial Connection**: The playbook uses Ansible's `raw` module for the initial connection and setup, which doesn't require Python on the target hosts.
+
+2. **Python Installation**: It automatically installs Python if it's not already present, using OS-native package managers like apt or yum.
+
+3. **Python Interpreter Paths**: The inventory specifies the Python interpreter path (`ansible_python_interpreter: /usr/bin/python3`) to avoid detection issues.
+
+4. **Error Handling**: The playbook includes robust error handling for Python-related issues, including cases where Python is installed but not in the expected location.
+
+This approach allows you to run the playbook against completely fresh servers without manually installing Python first.
+
+Example inventory configuration:
+```yaml
+all:
+  vars:
+    ansible_user: your_user
+    ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+    ansible_become: true
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    ansible_python_interpreter: /usr/bin/python3
+```
 
 ## 🌐 Ingress Configuration
 
